@@ -596,6 +596,101 @@ with tab1:
 
         st.caption("**MSE** = Error cuadrático medio · **PSNR** = Relación señal/ruido · **SSIM** = Similitud estructural — todos calculados respecto a la imagen original")
 
+    # ── Exportar configuración y métricas ─────────────────────────────────────
+    st.markdown("<hr class='stage-sep'>", unsafe_allow_html=True)
+    st.markdown('<span class="stage-header stage-res">📋 Exportar configuración y métricas</span>',
+                unsafe_allow_html=True)
+    st.caption("Copia este bloque directamente en tu informe o cuaderno de notas.")
+
+    # Construir nombre de archivo si hay uno cargado
+    nombre_img = uploaded.name if uploaded else "imagen_sin_nombre"
+
+    # Construir texto de pipeline
+    pre_activos  = [op for op in pre_ops  if op != NINGUNA_PRE]
+    filt_activos = [fn for fn in filt_names if fn != NINGUNO_FILT]
+    pipeline_str = " → ".join(pre_activos + filt_activos) if (pre_activos or filt_activos) else "Sin filtros aplicados"
+
+    # Recopilar parámetros relevantes según filtros usados
+    params_usados = {}
+    for op in pre_activos:
+        if op == "Corrección Gamma":   params_usados["Gamma γ"]            = P["gamma"]
+        if op == "Linear Stretching":  params_usados["Stretch % mín/máx"]  = f"{P['ls_min']} / {P['ls_max']}"
+        if op == "Suma":               params_usados["Suma valor"]          = P["suma_v"]
+        if op == "Resta":              params_usados["Resta valor"]         = P["resta_v"]
+        if op == "Transformada Log":   params_usados["Log constante c"]     = P["log_c"]
+    for fn in filt_activos:
+        if fn == "Gaussiano":          params_usados["Gaussiano k / σ"]     = f"{P['gk']} / {P['gs']}"
+        if fn == "CLAHE":              params_usados["CLAHE clip / tile"]   = f"{P['cc']} / {P['ct']}"
+        if fn == "Mediana":            params_usados["Mediana k"]           = P["mk"]
+        if fn == "Bilateral":         params_usados["Bilateral d/σC/σS"]   = f"{P['bd']}/{P['bsc']}/{P['bss']}"
+        if fn == "Sobel":              params_usados["Sobel k / dir"]       = f"{P['sk']} / {P['sd']}"
+        if fn == "Laplaciano":         params_usados["Laplaciano k"]        = P["lk"]
+        if fn == "Canny":              params_usados["Canny T1 / T2"]       = f"{P['ct1']} / {P['ct2']}"
+        if fn == "Unsharp Mask":       params_usados["Unsharp k/σ/fuerza"] = f"{P['uk']}/{P['us']}/{P['uf']}"
+        if fn in F_MORFO:
+            grupo = "A" if filt_activos.index(fn) < 3 else "B"
+            g = grupo.lower()
+            params_usados[f"{fn} kernel/forma/iters ({grupo})"] = \
+                f"{P[f'mok_{g}']} / {P[f'mosh_{g}']} / {P[f'moit_{g}']}"
+
+    # Calcular métricas para el bloque
+    img_diff_exp  = diferencia(img_orig, img_final)
+    m_pre_exp     = metricas(img_orig, img_preprocesada)
+    m_fin_exp     = metricas(img_orig, img_final)
+    m_dif_exp     = metricas(img_orig, img_diff_exp)
+
+    # Construir el texto exportable
+    separador = "─" * 56
+    params_lines = "\n".join(f"  {k:<32} {v}" for k, v in params_usados.items())
+
+    texto_export = f"""
+{'═'*56}
+  CONFIGURACIÓN DEL PIPELINE — EuroSAT Visión Artificial
+{'═'*56}
+  Imagen        : {nombre_img}
+
+  PIPELINE
+  {pipeline_str}
+
+  PARÁMETROS
+{params_lines if params_lines else '  (sin parámetros adicionales)'}
+
+  MORFOLÓGICO A (Pasos 1–3)
+  Kernel: {P['mok_a']}  |  Forma: {P['mosh_a']}  |  Iters: {P['moit_a']}
+
+  MORFOLÓGICO B (Pasos 4–5)
+  Kernel: {P['mok_b']}  |  Forma: {P['mosh_b']}  |  Iters: {P['moit_b']}
+
+{separador}
+  MÉTRICAS  (referencia: imagen original)
+{separador}
+  {'Etapa':<26} {'MSE':>10} {'PSNR (dB)':>10} {'SSIM':>8} {'Media':>8} {'Std':>8}
+  {'─'*26} {'─'*10} {'─'*10} {'─'*8} {'─'*8} {'─'*8}
+  {'Pre-procesada':<26} {m_pre_exp['MSE']:>10} {m_pre_exp['PSNR']:>10} {m_pre_exp['SSIM']:>8} {m_pre_exp['Media']:>8} {m_pre_exp['Std']:>8}
+  {'Final (pipeline)':<26} {m_fin_exp['MSE']:>10} {m_fin_exp['PSNR']:>10} {m_fin_exp['SSIM']:>8} {m_fin_exp['Media']:>8} {m_fin_exp['Std']:>8}
+  {'Diferencia orig→final':<26} {m_dif_exp['MSE']:>10} {m_dif_exp['PSNR']:>10} {m_dif_exp['SSIM']:>8} {m_dif_exp['Media']:>8} {m_dif_exp['Std']:>8}
+
+  MSE ↓ mejor · PSNR ↑ mejor · SSIM ↑ mejor (máx 1.0)
+{'═'*56}
+""".strip()
+
+    st.text_area(
+        label="📋 Configuración y métricas — listo para copiar",
+        value=texto_export,
+        height=370,
+        key="export_block",
+        help="Selecciona todo (Ctrl+A dentro del cuadro) y copia (Ctrl+C)"
+    )
+
+    # Botón de descarga como .txt
+    st.download_button(
+        label="⬇️ Descargar como .txt",
+        data=texto_export.encode("utf-8"),
+        file_name=f"pipeline_{nombre_img.rsplit('.',1)[0]}.txt",
+        mime="text/plain",
+        key="dl_config"
+    )
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # TAB 2 — COMPARACIÓN MÚLTIPLE
 # ═══════════════════════════════════════════════════════════════════════════════
