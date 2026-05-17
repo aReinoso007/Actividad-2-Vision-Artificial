@@ -491,10 +491,14 @@ with tab1:
                     st.pyplot(fig_c, use_container_width=True); plt.close(fig_c)
 
     if show_metr:
-        st.markdown("#### Métricas por etapa")
+        st.markdown("#### Métricas por etapa (referencia: imagen original)")
+
+        img_diff = diferencia(img_orig, img_final)
+
         etapas = [
-            ("Pre-procesada", img_preprocesada),
-            ("Final",         img_final),
+            ("Pre-procesada",        img_preprocesada),
+            ("Final (pipeline)",     img_final),
+            ("Diferencia orig→final",img_diff),
         ]
         tabla = []
         for lbl, img in etapas:
@@ -506,6 +510,56 @@ with tab1:
                     .background_gradient(cmap="Reds_r", subset=["MSE"]),
             use_container_width=True
         )
+
+        # Tarjetas de métricas clave para Final y Diferencia
+        st.markdown("#### Resumen rápido")
+        m_final = metricas(img_orig, img_final)
+        m_diff  = metricas(img_orig, img_diff)
+
+        col_f1,col_f2,col_f3,col_sep,col_d1,col_d2,col_d3 = st.columns([1,1,1,0.2,1,1,1])
+        st.markdown("""
+        <style>
+        .mcard { background:#0d1526; border:1px solid #1e2d4a; border-radius:8px;
+                 padding:10px; text-align:center; }
+        .mcard .mlabel { color:#8899aa; font-size:0.7rem; font-family:'Space Mono',monospace;
+                         text-transform:uppercase; letter-spacing:1px; }
+        .mcard .mval   { font-size:1.3rem; font-weight:700; font-family:'Space Mono',monospace; }
+        .mcard .mval.blue  { color:#00d4ff; }
+        .mcard .mval.green { color:#51cf66; }
+        .mcard .mval.red   { color:#ff6b6b; }
+        .mcard .msub   { color:#8899aa; font-size:0.65rem; margin-top:2px; }
+        </style>
+        """, unsafe_allow_html=True)
+
+        with col_f1:
+            st.markdown(f'<div class="mcard"><div class="mlabel">MSE · Final</div>'
+                        f'<div class="mval red">{m_final["MSE"]}</div>'
+                        f'<div class="msub">↓ mejor</div></div>', unsafe_allow_html=True)
+        with col_f2:
+            st.markdown(f'<div class="mcard"><div class="mlabel">PSNR · Final</div>'
+                        f'<div class="mval blue">{m_final["PSNR"]} dB</div>'
+                        f'<div class="msub">↑ mejor</div></div>', unsafe_allow_html=True)
+        with col_f3:
+            st.markdown(f'<div class="mcard"><div class="mlabel">SSIM · Final</div>'
+                        f'<div class="mval green">{m_final["SSIM"]}</div>'
+                        f'<div class="msub">↑ mejor · máx 1.0</div></div>', unsafe_allow_html=True)
+        with col_sep:
+            st.markdown('<div style="border-left:1px solid #1e2d4a;height:80px;margin:auto;width:1px"></div>',
+                        unsafe_allow_html=True)
+        with col_d1:
+            st.markdown(f'<div class="mcard"><div class="mlabel">MSE · Diferencia</div>'
+                        f'<div class="mval red">{m_diff["MSE"]}</div>'
+                        f'<div class="msub">↓ mejor</div></div>', unsafe_allow_html=True)
+        with col_d2:
+            st.markdown(f'<div class="mcard"><div class="mlabel">PSNR · Diferencia</div>'
+                        f'<div class="mval blue">{m_diff["PSNR"]} dB</div>'
+                        f'<div class="msub">↑ mejor</div></div>', unsafe_allow_html=True)
+        with col_d3:
+            st.markdown(f'<div class="mcard"><div class="mlabel">SSIM · Diferencia</div>'
+                        f'<div class="mval green">{m_diff["SSIM"]}</div>'
+                        f'<div class="msub">↑ mejor · máx 1.0</div></div>', unsafe_allow_html=True)
+
+        st.caption("**MSE** = Error cuadrático medio · **PSNR** = Relación señal/ruido · **SSIM** = Similitud estructural — todos calculados respecto a la imagen original")
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # TAB 2 — COMPARACIÓN MÚLTIPLE
