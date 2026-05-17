@@ -362,26 +362,57 @@ tab1, tab2, tab3, tab4 = st.tabs([
 ])
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# PERSISTENCIA DEL PIPELINE EN SESSION STATE
+# Guarda las selecciones independientemente del file uploader
+# ═══════════════════════════════════════════════════════════════════════════════
+
+_DEFAULTS_PRE  = [NINGUNA_PRE]  * 3
+_DEFAULTS_FILT = [NINGUNO_FILT] * 5
+
+for i, v in enumerate(_DEFAULTS_PRE):
+    if f"saved_pre_{i}" not in st.session_state:
+        st.session_state[f"saved_pre_{i}"] = v
+for i, v in enumerate(_DEFAULTS_FILT):
+    if f"saved_f{i}" not in st.session_state:
+        st.session_state[f"saved_f{i}"] = v
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # TAB 1 — PIPELINE COMPLETO EN TIEMPO REAL
 # ═══════════════════════════════════════════════════════════════════════════════
 with tab1:
 
+    # Botón de reset (esquina derecha del título)
+    col_title, col_reset = st.columns([6, 1])
+    with col_title:
+        st.markdown('<span class="stage-header stage-pre">① Pre-procesamiento</span>', unsafe_allow_html=True)
+        st.caption("Operaciones elementales de intensidad — se aplican sobre la imagen original.")
+    with col_reset:
+        if st.button("🔄 Reset", key="reset_pipeline", help="Limpia todos los filtros del pipeline"):
+            for i in range(3):
+                st.session_state[f"saved_pre_{i}"] = NINGUNA_PRE
+                st.session_state[f"pre_{i}"]       = NINGUNA_PRE
+            for i in range(5):
+                st.session_state[f"saved_f{i}"] = NINGUNO_FILT
+                st.session_state[f"f{i}"]       = NINGUNO_FILT
+            st.rerun()
+
     # ──────────────────────────────────────────────────────────────────────────
     # ETAPA 1: PRE-PROCESAMIENTO
     # ──────────────────────────────────────────────────────────────────────────
-    st.markdown('<span class="stage-header stage-pre">① Pre-procesamiento</span>', unsafe_allow_html=True)
-    st.caption("Operaciones elementales de intensidad — se aplican sobre la imagen original.")
-
     pre_cols = st.columns(3)
-    pre_ops = []
+    pre_ops  = []
     for i, col in enumerate(pre_cols):
         with col:
-            pre_ops.append(st.selectbox(f"Op. {i+1}", OPS_PRE, key=f"pre_{i}"))
+            saved  = st.session_state[f"saved_pre_{i}"]
+            idx    = OPS_PRE.index(saved) if saved in OPS_PRE else 0
+            sel    = st.selectbox(f"Op. {i+1}", OPS_PRE, index=idx, key=f"pre_{i}")
+            st.session_state[f"saved_pre_{i}"] = sel   # persiste aunque cambie la imagen
+            pre_ops.append(sel)
 
     # Cómputo reactivo del pre-procesamiento
     pre_imgs  = [img_orig]
     pre_names = ["Original"]
-    cur_pre = img_orig.copy()
+    cur_pre   = img_orig.copy()
     for nombre in pre_ops:
         if nombre == NINGUNA_PRE:
             continue
@@ -408,12 +439,16 @@ with tab1:
     st.markdown('<span class="stage-header stage-filt">② Filtros espaciales y morfológicos</span>', unsafe_allow_html=True)
     st.caption("Se aplican sobre el resultado del pre-procesamiento. Morfológico A = pasos 1–3 · B = pasos 4–5.")
 
-    filt_cols = st.columns(5)
+    filt_cols  = st.columns(5)
     filt_names = []
     for i, col in enumerate(filt_cols):
         with col:
             grupo_label = " 🔴" if i < 3 else " 🟠"
-            filt_names.append(st.selectbox(f"Paso {i+1}{grupo_label}", FILTROS, key=f"f{i}"))
+            saved = st.session_state[f"saved_f{i}"]
+            idx   = FILTROS.index(saved) if saved in FILTROS else 0
+            sel   = st.selectbox(f"Paso {i+1}{grupo_label}", FILTROS, index=idx, key=f"f{i}")
+            st.session_state[f"saved_f{i}"] = sel      # persiste aunque cambie la imagen
+            filt_names.append(sel)
 
     # Cómputo reactivo de filtros
     filt_imgs  = [img_preprocesada]
