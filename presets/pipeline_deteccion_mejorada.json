@@ -1,0 +1,19 @@
+{
+  "nombre": "Pipeline_Deteccion_Mejorada",
+  "pre_ops": ["Corrección Gamma", "Linear Stretching", "Ecualización HE"],
+  "filt_names": ["Gaussiano", "Unsharp Mask", "Cierre", "Top-Hat (Blanco)", "— ninguno —"],
+  "params": {
+    "gk": 3,   "gs": 1.0,
+    "cc": 3.0, "ct": 8,
+    "mk": 3,   "bd": 7,  "bsc": 50, "bss": 50,
+    "sk": 3,   "sd": "XY",
+    "lk": 3,   "ct1": 30, "ct2": 80,
+    "uk": 3,   "us": 1.5, "uf": 1.2,
+    "mok_a": 1, "mosh_a": "Cruz", "moit_a": 1,
+    "mok_b": 5, "mosh_b": "Cruz", "moit_b": 2,
+    "suma_v": 50, "resta_v": 50, "gamma": 0.4,
+    "ls_min": 2,  "ls_max": 98,  "log_c": 40.0,
+    "th_tipo": "Otsu (automático)", "th_val": 127, "th_block": 11, "th_c": 2,
+    "an_alpha": 0.075, "an_K": 50, "an_niters": 10
+  }
+}

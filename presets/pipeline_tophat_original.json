@@ -1,5 +1,5 @@
 {
-  "nombre": "Pipeline_B_plus_TopHat",
+  "nombre": "Pipeline_final_plus_TopHat",
   "pre_ops": ["Corrección Gamma", "Linear Stretching", "Suma"],
   "filt_names": ["Unsharp Mask", "CLAHE", "Cierre", "Top-Hat (Blanco)", "— ninguno —"],
   "params": {
