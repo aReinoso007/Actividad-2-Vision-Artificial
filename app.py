@@ -144,6 +144,19 @@ def f_unsharp(img, ksize=3, sigma=1.0, strength=1.5):
     blur = cv2.GaussianBlur(img, (k_odd(ksize),)*2, sigma)
     return np.clip(cv2.addWeighted(img, 1+strength, blur, -strength, 0), 0, 255).astype(np.uint8)
 
+def f_anisotropico(img, alpha=0.075, K=50, niters=10):
+    """Difusión anisotrópica de Perona-Malik — suaviza texturas preservando bordes."""
+    gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY) if img.ndim == 3 else img
+    try:
+        result = cv2.ximgproc.anisotropicDiffusion(
+            gray.astype(np.float32), alpha=float(alpha), K=float(K), niters=int(niters)
+        )
+        result = cv2.normalize(result, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+    except AttributeError:
+        # Fallback si no está opencv-contrib: usar bilateral como aproximación
+        result = cv2.bilateralFilter(gray, d=9, sigmaColor=75, sigmaSpace=75)
+    return cv2.cvtColor(result, cv2.COLOR_GRAY2RGB)
+
 FORMAS = {"Rectángulo": cv2.MORPH_RECT, "Elipse": cv2.MORPH_ELLIPSE, "Cruz": cv2.MORPH_CROSS}
 OPS_MORFO = {
     "Erosión": cv2.MORPH_ERODE, "Dilatación": cv2.MORPH_DILATE,
@@ -216,13 +229,19 @@ def op_he(img):
 def op_negativa(img):
     return (255 - img.astype(np.int32)).clip(0,255).astype(np.uint8)
 
+def op_escala_grises(img):
+    """Convierte a escala de grises y devuelve 3 canales iguales (compatible con el pipeline)."""
+    gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY) if img.ndim == 3 else img
+    return cv2.cvtColor(gray, cv2.COLOR_GRAY2RGB)
+
 NINGUNA_PRE  = "— ninguna —"
 NINGUNO_FILT = "— ninguno —"
 
 OPS_PRE = [NINGUNA_PRE, "Suma", "Resta", "Corrección Gamma",
-           "Linear Stretching", "Transformada Log", "Ecualización HE", "Negativa"]
+           "Linear Stretching", "Transformada Log", "Ecualización HE", "Negativa",
+           "Escala de Grises"]
 
-F_ESPACIALES = ["Gaussiano","CLAHE","Mediana","Bilateral","Sobel","Laplaciano","Canny","Unsharp Mask","Threshold"]
+F_ESPACIALES = ["Gaussiano","CLAHE","Mediana","Bilateral","Sobel","Laplaciano","Canny","Unsharp Mask","Threshold","Anisotrópico"]
 F_MORFO      = list(OPS_MORFO.keys())
 FILTROS      = [NINGUNO_FILT] + F_ESPACIALES + F_MORFO
 
@@ -239,6 +258,7 @@ def aplicar_pre(img, nombre, P):
     if nombre=="Transformada Log":    return op_log(img, P["log_c"])
     if nombre=="Ecualización HE":     return op_he(img)
     if nombre=="Negativa":            return op_negativa(img)
+    if nombre=="Escala de Grises":    return op_escala_grises(img)
     return img
 
 def aplicar_filtro(img, nombre, P, grupo="A"):
@@ -252,6 +272,7 @@ def aplicar_filtro(img, nombre, P, grupo="A"):
     if nombre=="Canny":       return f_canny(img, P["ct1"], P["ct2"])
     if nombre=="Unsharp Mask":return f_unsharp(img, P["uk"], P["us"], P["uf"])
     if nombre=="Threshold":    return f_threshold(img, P["th_tipo"], P["th_val"], P["th_block"], P["th_c"])
+    if nombre=="Anisotrópico": return f_anisotropico(img, P["an_alpha"], P["an_K"], P["an_niters"])
     if nombre in F_MORFO:
         g = grupo.lower()
         return f_morfo(img, nombre, P[f"mok_{g}"], P[f"mosh_{g}"], P[f"moit_{g}"])
@@ -477,7 +498,9 @@ with st.sidebar:
                                 sk=3,sd="XY",lk=3,ct1=30,ct2=80,uk=3,us=1.0,uf=1.5,
                                 mok_a=5,mosh_a="Rectángulo",moit_a=1,
                                 mok_b=3,mosh_b="Rectángulo",moit_b=1,
-                                suma_v=50,resta_v=50,gamma=0.4,ls_min=0,ls_max=100,log_c=40.0)
+                                suma_v=50,resta_v=50,gamma=0.4,ls_min=0,ls_max=100,log_c=40.0,
+                                th_tipo="Otsu (automático)",th_val=127,th_block=11,th_c=2,
+                                an_alpha=0.075,an_K=50,an_niters=10)
                 P_act = {k: st.session_state.get(k, v) for k, v in defaults.items()}
                 nom = nombre_preset.strip().replace(" ","_").replace("/","_")
                 guardar_preset(nom, ops_act, filts_act, P_act)
@@ -557,6 +580,14 @@ with st.sidebar:
         th_c     = st.slider("Constante C (adapt.)", -20, 20, 2, key="th_c",
                              help="Solo para métodos Adaptativos")
 
+    with st.expander("🌊 Anisotrópico (Perona-Malik)", expanded=False):
+        an_alpha  = st.slider("Alpha — tasa difusión", 0.01, 0.25, 0.075, 0.005, key="an_alpha",
+                              help="Menor = más suavizado. Rango recomendado: 0.05–0.15")
+        an_K      = st.slider("K — sensibilidad borde",  5, 150, 50, 5,    key="an_K",
+                              help="Mayor = preserva más bordes. Rango: 30–80 para satelital")
+        an_niters = st.slider("Iteraciones",              1,  50, 10, 1,    key="an_niters",
+                              help="Más iteraciones = más suavizado")
+
     with st.expander("🔴 Morfológico A  (Pasos 1–3)", expanded=True):
         mok_a  = st.slider("Kernel A",   1,15,5,2,key="mok_a")
         mosh_a = st.selectbox("Forma A",["Rectángulo","Elipse","Cruz"],key="mosh_a")
@@ -575,6 +606,7 @@ P = dict(
     suma_v=suma_v, resta_v=resta_v, gamma=gamma,
     ls_min=ls_min, ls_max=ls_max, log_c=log_c,
     th_tipo=th_tipo, th_val=th_val, th_block=th_block, th_c=th_c,
+    an_alpha=an_alpha, an_K=an_K, an_niters=an_niters,
 )
 
 # ─── IMAGEN ──────────────────────────────────────────────────────────────────
@@ -951,6 +983,7 @@ with tab1:
         if fn == "Canny":              params_usados["Canny T1 / T2"]       = f"{P['ct1']} / {P['ct2']}"
         if fn == "Unsharp Mask":       params_usados["Unsharp k/σ/fuerza"] = f"{P['uk']}/{P['us']}/{P['uf']}"
         if fn == "Threshold":          params_usados[f"Threshold tipo"]    = P["th_tipo"]
+        if fn == "Anisotrópico":       params_usados["Anisotr. α/K/iters"] = f"{P['an_alpha']}/{P['an_K']}/{P['an_niters']}"
         if fn == "Threshold" and P["th_tipo"] in ["Binario fijo","Inverso fijo"]:
                                        params_usados["Threshold umbral"]   = P["th_val"]
         if fn == "Threshold" and "Adaptativo" in P["th_tipo"]:
