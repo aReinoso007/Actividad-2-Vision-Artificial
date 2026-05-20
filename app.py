@@ -343,12 +343,14 @@ def plot_edge_comparison(orig, proc, label_proc):
     grad = cv2.normalize(np.sqrt(sx**2+sy**2), None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
 
     fig, axes = plt.subplots(1, 4, figsize=(16, 3.5))
-    fig.patch.set_facecolor(DARK_BG)
+    # white background for consistency
+    fig.patch.set_facecolor("white")
     datos = [(orig, "Original"), (proc, label_proc),
              (edges_o, "Bordes Canny — Original"), (edges_p, f"Bordes Canny — {label_proc}")]
     for ax, (img, t) in zip(axes, datos):
+        ax.set_facecolor("white")
         ax.imshow(img, cmap="gray" if img.ndim == 2 else None)
-        ax.set_title(t, color="white", fontsize=8); ax.axis("off")
+        ax.set_title(t, color="black", fontsize=8); ax.axis("off")
     fig.tight_layout()
     return fig
 
@@ -378,33 +380,41 @@ def metricas(orig, proc):
 def plot_hist(imgs, labels):
     fig, axes = plt.subplots(1, len(imgs), figsize=(4.5*len(imgs), 3.2))
     if len(imgs)==1: axes=[axes]
-    fig.patch.set_facecolor(DARK_BG)
+    # White background for histogram figures
+    fig.patch.set_facecolor("white")
     for ax, img, lbl in zip(axes, imgs, labels):
-        ax.set_facecolor(DARK_BG)
+        ax.set_facecolor("white")
+        # draw grid with a light gray color
+        ax.grid(True, color="#e6e6e6", linewidth=0.8)
         for i,(col,name) in enumerate(zip(("#ff4d6d","#51cf66","#339af0"),"RGB")):
             ch = min(i, img.shape[2]-1) if img.ndim==3 else 0
             h = cv2.calcHist([img],[ch],None,[256],[0,256]).flatten()
             ax.fill_between(range(256),h,alpha=0.3,color=col)
             ax.plot(h,color=col,lw=0.8,label=name)
-        ax.set_title(lbl,color="white",fontsize=9)
-        ax.set_xlim(0,255); ax.tick_params(colors="#8899aa",labelsize=7)
-        ax.spines[:].set_color(GRID_C)
-        ax.legend(fontsize=7,facecolor="#0d1526",labelcolor="white",edgecolor=GRID_C)
+        ax.set_title(lbl,color="black",fontsize=9)
+        ax.set_xlim(0,255)
+        # darker ticks/labels for white background
+        ax.tick_params(colors="#222222",labelsize=7)
+        # light colored spines to match grid
+        ax.spines[:].set_color("#cccccc")
+        ax.legend(fontsize=7,facecolor="white",labelcolor="black",edgecolor="#dddddd")
     fig.tight_layout(); return fig
 
 def plot_perfil(orig, proc, lbl):
     row = orig.shape[0]//2
     fig, axes = plt.subplots(2,1,figsize=(10,4),sharex=True)
-    fig.patch.set_facecolor(DARK_BG)
+    fig.patch.set_facecolor("white")
     for ax,(img,title) in zip(axes,[(orig,"Original"),(proc,lbl)]):
-        ax.set_facecolor(DARK_BG); ax.set_title(title,color="white",fontsize=9)
+        ax.set_facecolor("white")
+        ax.grid(True, color="#e6e6e6", linewidth=0.8)
+        ax.set_title(title,color="black",fontsize=9)
         if img.ndim==3:
             for col,name,ch in zip(("#ff4d6d","#51cf66","#339af0"),"RGB",range(3)):
                 ax.plot(img[row,:,ch],color=col,lw=0.9,label=name)
         else: ax.plot(img[row,:],color="#00d4ff",lw=0.9)
-        ax.tick_params(colors="#8899aa",labelsize=7); ax.spines[:].set_color(GRID_C)
-        ax.legend(fontsize=7,facecolor="#0d1526",labelcolor="white",edgecolor=GRID_C)
-    axes[-1].set_xlabel("Píxel (columna)",color="#8899aa",fontsize=8)
+        ax.tick_params(colors="#222222",labelsize=7); ax.spines[:].set_color("#cccccc")
+        ax.legend(fontsize=7,facecolor="white",labelcolor="black",edgecolor="#dddddd")
+    axes[-1].set_xlabel("Píxel (columna)",color="#222222",fontsize=8)
     fig.tight_layout(); return fig
 
 def plot_curva(nombre_op, P):
@@ -417,12 +427,13 @@ def plot_curva(nombre_op, P):
     elif nombre_op=="Negativa":          s=255-r
     else:                                s=r
     fig,ax=plt.subplots(figsize=(3.5,3))
-    fig.patch.set_facecolor(DARK_BG); ax.set_facecolor(DARK_BG)
+    fig.patch.set_facecolor("white"); ax.set_facecolor("white")
+    ax.grid(True, color="#e6e6e6", linewidth=0.8)
     ax.plot(r,s,color="#51cf66",lw=2)
-    ax.plot([0,255],[0,255],color="#2a3555",lw=0.8,linestyle="--")
-    ax.set_title("Curva T(r)",color="white",fontsize=9)
-    ax.set_xlabel("r",color="#8899aa",fontsize=8); ax.set_ylabel("s",color="#8899aa",fontsize=8)
-    ax.tick_params(colors="#8899aa",labelsize=7); ax.spines[:].set_color(GRID_C)
+    ax.plot([0,255],[0,255],color="#cccccc",lw=0.8,linestyle="--")
+    ax.set_title("Curva T(r)",color="black",fontsize=9)
+    ax.set_xlabel("r",color="#222222",fontsize=8); ax.set_ylabel("s",color="#222222",fontsize=8)
+    ax.tick_params(colors="#222222",labelsize=7); ax.spines[:].set_color("#cccccc")
     ax.set_xlim(0,255); ax.set_ylim(0,255)
     fig.tight_layout(); return fig
 
@@ -1091,12 +1102,12 @@ with tab2:
     if resultados:
         n_tot = len(resultados)+1
         fig, axes = plt.subplots(1, n_tot, figsize=(4*n_tot, 4))
-        fig.patch.set_facecolor(DARK_BG)
+        fig.patch.set_facecolor("white")
         if n_tot==1: axes=[axes]
         lbl_src = "Original" if fuente_cmp=="Original" else "Pre-proc."
-        axes[0].imshow(img_cmp_src); axes[0].set_title(lbl_src,color="white",fontsize=9); axes[0].axis("off")
+        axes[0].set_facecolor("white"); axes[0].imshow(img_cmp_src); axes[0].set_title(lbl_src,color="black",fontsize=9); axes[0].axis("off")
         for ax,(lbl,img) in zip(axes[1:],resultados):
-            ax.imshow(img); ax.set_title(lbl,color="white",fontsize=8); ax.axis("off")
+            ax.set_facecolor("white"); ax.imshow(img); ax.set_title(lbl,color="black",fontsize=8); ax.axis("off")
         fig.tight_layout()
         st.pyplot(fig, use_container_width=True); plt.close(fig)
 
@@ -1133,9 +1144,9 @@ with tab3:
 
     diff_img = diferencia(img_gr_src, img_proc)
     fig_d, axes = plt.subplots(1,3,figsize=(12,3.5))
-    fig_d.patch.set_facecolor(DARK_BG)
+    fig_d.patch.set_facecolor("white")
     for ax,img,t in zip(axes,[img_gr_src,img_proc,diff_img],[fuente_graf,fa,"Diferencia"]):
-        ax.imshow(img); ax.set_title(t,color="white",fontsize=9); ax.axis("off")
+        ax.set_facecolor("white"); ax.imshow(img); ax.set_title(t,color="black",fontsize=9); ax.axis("off")
     fig_d.tight_layout()
     st.pyplot(fig_d, use_container_width=True); plt.close(fig_d)
 
@@ -1176,13 +1187,14 @@ with tab4:
         )
 
         fig_b, ax = plt.subplots(figsize=(10, max(3, len(df)*0.55)))
-        fig_b.patch.set_facecolor(DARK_BG); ax.set_facecolor(DARK_BG)
+        fig_b.patch.set_facecolor("white"); ax.set_facecolor("white")
         bars = ax.barh(df.index, df["SSIM"], color="#339af0", alpha=0.85)
-        ax.set_xlim(0,1); ax.set_title("SSIM por filtro/op",color="white",fontsize=10)
-        ax.tick_params(colors="#8899aa",labelsize=8); ax.spines[:].set_color(GRID_C)
+        ax.set_xlim(0,1); ax.set_title("SSIM por filtro/op",color="black",fontsize=10)
+        ax.grid(True, axis='x', color="#e6e6e6", linewidth=0.8)
+        ax.tick_params(colors="#222222",labelsize=8); ax.spines[:].set_color("#cccccc")
         for bar in bars:
             ax.text(bar.get_width()+0.01, bar.get_y()+bar.get_height()/2,
-                    f"{bar.get_width():.4f}", va="center", color="white", fontsize=7)
+                    f"{bar.get_width():.4f}", va="center", color="black", fontsize=7)
         st.pyplot(fig_b, use_container_width=True); plt.close(fig_b)
         st.caption("MSE ↓ mejor · PSNR ↑ mejor · SSIM ↑ mejor")
     else:
