@@ -1,5 +1,5 @@
 {
-  "nombre": "Pipeline_Deteccion_Mejorada",
+  "nombre": "Pipeline_final",
   "pre_ops": ["Corrección Gamma", "Linear Stretching", "Ecualización HE"],
   "filt_names": ["Gaussiano", "Unsharp Mask", "Cierre", "Top-Hat (Blanco)", "— ninguno —"],
   "params": {
