@@ -14,6 +14,35 @@ from PIL import Image
 from skimage.metrics import structural_similarity as ssim
 import io
 import pandas as pd
+import json
+import os
+from pathlib import Path
+
+# ── Directorio de presets ────────────────────────────────────────────────────
+PRESETS_DIR = Path("presets")
+PRESETS_DIR.mkdir(exist_ok=True)
+
+def guardar_preset(nombre, pre_ops, filt_names, P):
+    data = {"nombre": nombre, "pre_ops": pre_ops, "filt_names": filt_names, "params": P}
+    ruta = PRESETS_DIR / f"{nombre}.json"
+    with open(ruta, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+    return ruta
+
+def cargar_preset(nombre):
+    ruta = PRESETS_DIR / f"{nombre}.json"
+    if ruta.exists():
+        with open(ruta, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return None
+
+def listar_presets():
+    return sorted([p.stem for p in PRESETS_DIR.glob("*.json")])
+
+def eliminar_preset(nombre):
+    ruta = PRESETS_DIR / f"{nombre}.json"
+    if ruta.exists():
+        os.remove(ruta)
 
 st.set_page_config(
     page_title="Filtros EuroSAT · Visión Artificial",
@@ -296,6 +325,96 @@ st.markdown("---")
 with st.sidebar:
     st.markdown("### 📂 Imagen")
     uploaded = st.file_uploader("Cargar imagen EuroSAT", type=["jpg","jpeg","png"])
+
+    # ── GESTOR DE PRESETS ──────────────────────────────────────────────────
+    st.markdown("---")
+    st.markdown("### 💾 Presets de pipeline")
+    presets_disponibles = listar_presets()
+
+    with st.expander("📂 Cargar preset", expanded=len(presets_disponibles) > 0):
+        if presets_disponibles:
+            preset_elegido = st.selectbox("Seleccionar preset", presets_disponibles, key="preset_sel")
+            col_load, col_del = st.columns(2)
+            with col_load:
+                if st.button("⬆️ Cargar", key="btn_load", use_container_width=True):
+                    datos = cargar_preset(preset_elegido)
+                    if datos:
+                        for i, op in enumerate(datos["pre_ops"][:3]):
+                            st.session_state[f"saved_pre_{i}"] = op
+                            st.session_state[f"pre_{i}"] = op
+                        for i, fn in enumerate(datos["filt_names"][:5]):
+                            st.session_state[f"saved_f{i}"] = fn
+                            st.session_state[f"f{i}"] = fn
+                        params_g = datos.get("params", {})
+                        for k in ["suma_v","resta_v","gamma","ls_min","ls_max","log_c",
+                                   "gk","gs","cc","mk","bd","bsc","bss","sk","lk",
+                                   "ct1","ct2","uk","us","uf","mok_a","moit_a","mok_b","moit_b",
+                                   "sd","mosh_a","mosh_b","ct"]:
+                            if k in params_g:
+                                st.session_state[k] = params_g[k]
+                        st.success(f"✅ Preset '{preset_elegido}' cargado")
+                        st.rerun()
+            with col_del:
+                if st.button("🗑️ Eliminar", key="btn_del", use_container_width=True):
+                    eliminar_preset(preset_elegido)
+                    st.warning(f"Preset '{preset_elegido}' eliminado")
+                    st.rerun()
+        else:
+            st.caption("No hay presets guardados aún.")
+
+    with st.expander("💾 Guardar preset actual", expanded=False):
+        nombre_preset = st.text_input("Nombre del preset",
+            placeholder="ej: Pipeline_A_Highway, Arido_v2...", key="preset_nombre")
+        if st.button("💾 Guardar", key="btn_save", use_container_width=True):
+            if nombre_preset.strip():
+                ops_act  = [st.session_state.get(f"saved_pre_{i}", "— ninguna —") for i in range(3)]
+                filts_act = [st.session_state.get(f"saved_f{i}", "— ninguno —") for i in range(5)]
+                defaults = dict(gk=3,gs=0.8,cc=3.0,ct=8,mk=3,bd=7,bsc=50,bss=50,
+                                sk=3,sd="XY",lk=3,ct1=30,ct2=80,uk=3,us=1.0,uf=1.5,
+                                mok_a=5,mosh_a="Rectángulo",moit_a=1,
+                                mok_b=3,mosh_b="Rectángulo",moit_b=1,
+                                suma_v=50,resta_v=50,gamma=0.4,ls_min=0,ls_max=100,log_c=40.0)
+                P_act = {k: st.session_state.get(k, v) for k, v in defaults.items()}
+                nom = nombre_preset.strip().replace(" ","_").replace("/","_")
+                guardar_preset(nom, ops_act, filts_act, P_act)
+                st.success(f"✅ Preset '{nom}' guardado")
+                st.rerun()
+            else:
+                st.warning("Escribe un nombre para el preset.")
+
+    with st.expander("📤 Importar preset desde archivo .json", expanded=False):
+        arch_json = st.file_uploader("Cargar .json", type=["json"], key="preset_upload")
+        if arch_json is not None:
+            try:
+                datos_imp = json.load(arch_json)
+                nom_imp = datos_imp.get("nombre", arch_json.name.replace(".json","")).replace(" ","_")
+                with open(PRESETS_DIR / f"{nom_imp}.json", "w", encoding="utf-8") as ff:
+                    json.dump(datos_imp, ff, ensure_ascii=False, indent=2)
+                st.success(f"✅ Preset '{nom_imp}' importado")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Error: {e}")
+
+    # También mostrar botón para descargar preset activo como JSON
+    with st.expander("📥 Exportar preset activo como archivo", expanded=False):
+        nom_exp = st.text_input("Nombre para exportar", key="preset_exp_nombre",
+                                placeholder="Pipeline_A_Highway...")
+        if st.button("📥 Descargar JSON", key="btn_exp_dl", use_container_width=True):
+            if nom_exp.strip():
+                ops_exp   = [st.session_state.get(f"saved_pre_{i}", "— ninguna —") for i in range(3)]
+                filts_exp = [st.session_state.get(f"saved_f{i}", "— ninguno —") for i in range(5)]
+                defaults2 = dict(gk=3,gs=0.8,cc=3.0,ct=8,mk=3,bd=7,bsc=50,bss=50,
+                                 sk=3,sd="XY",lk=3,ct1=30,ct2=80,uk=3,us=1.0,uf=1.5,
+                                 mok_a=5,mosh_a="Rectángulo",moit_a=1,
+                                 mok_b=3,mosh_b="Rectángulo",moit_b=1,
+                                 suma_v=50,resta_v=50,gamma=0.4,ls_min=0,ls_max=100,log_c=40.0)
+                P_exp = {k: st.session_state.get(k, v) for k, v in defaults2.items()}
+                data_exp = {"nombre": nom_exp.strip(), "pre_ops": ops_exp,
+                            "filt_names": filts_exp, "params": P_exp}
+                st.download_button("⬇️ Descargar", data=json.dumps(data_exp, ensure_ascii=False, indent=2).encode(),
+                                   file_name=f"{nom_exp.strip().replace(chr(32),chr(95))}.json",
+                                   mime="application/json", key="dl_json_preset")
+
     st.markdown("---")
     st.markdown("### 🔧 Parámetros")
 
@@ -403,10 +522,12 @@ with tab1:
     pre_ops  = []
     for i, col in enumerate(pre_cols):
         with col:
-            saved  = st.session_state[f"saved_pre_{i}"]
-            idx    = OPS_PRE.index(saved) if saved in OPS_PRE else 0
-            sel    = st.selectbox(f"Op. {i+1}", OPS_PRE, index=idx, key=f"pre_{i}")
-            st.session_state[f"saved_pre_{i}"] = sel   # persiste aunque cambie la imagen
+            # Sincronizar key del widget con el valor guardado antes de renderizar
+            saved = st.session_state.get(f"saved_pre_{i}", NINGUNA_PRE)
+            if st.session_state.get(f"pre_{i}") != saved:
+                st.session_state[f"pre_{i}"] = saved
+            sel = st.selectbox(f"Op. {i+1}", OPS_PRE, key=f"pre_{i}")
+            st.session_state[f"saved_pre_{i}"] = sel
             pre_ops.append(sel)
 
     # Cómputo reactivo del pre-procesamiento
@@ -444,10 +565,12 @@ with tab1:
     for i, col in enumerate(filt_cols):
         with col:
             grupo_label = " 🔴" if i < 3 else " 🟠"
-            saved = st.session_state[f"saved_f{i}"]
-            idx   = FILTROS.index(saved) if saved in FILTROS else 0
-            sel   = st.selectbox(f"Paso {i+1}{grupo_label}", FILTROS, index=idx, key=f"f{i}")
-            st.session_state[f"saved_f{i}"] = sel      # persiste aunque cambie la imagen
+            # Sincronizar key del widget con el valor guardado antes de renderizar
+            saved = st.session_state.get(f"saved_f{i}", NINGUNO_FILT)
+            if st.session_state.get(f"f{i}") != saved:
+                st.session_state[f"f{i}"] = saved
+            sel = st.selectbox(f"Paso {i+1}{grupo_label}", FILTROS, key=f"f{i}")
+            st.session_state[f"saved_f{i}"] = sel
             filt_names.append(sel)
 
     # Cómputo reactivo de filtros
@@ -606,8 +729,13 @@ with tab1:
     nombre_img = uploaded.name if uploaded else "imagen_sin_nombre"
 
     # Construir texto de pipeline
-    pre_activos  = [op for op in pre_ops  if op != NINGUNA_PRE]
-    filt_activos = [fn for fn in filt_names if fn != NINGUNO_FILT]
+    # Leer SIEMPRE desde session_state para evitar lag de render
+    pre_activos  = [st.session_state.get(f"saved_pre_{i}", NINGUNA_PRE)
+                    for i in range(3)
+                    if st.session_state.get(f"saved_pre_{i}", NINGUNA_PRE) != NINGUNA_PRE]
+    filt_activos = [st.session_state.get(f"saved_f{i}", NINGUNO_FILT)
+                    for i in range(5)
+                    if st.session_state.get(f"saved_f{i}", NINGUNO_FILT) != NINGUNO_FILT]
     pipeline_str = " → ".join(pre_activos + filt_activos) if (pre_activos or filt_activos) else "Sin filtros aplicados"
 
     # Recopilar parámetros relevantes según filtros usados
@@ -628,7 +756,8 @@ with tab1:
         if fn == "Canny":              params_usados["Canny T1 / T2"]       = f"{P['ct1']} / {P['ct2']}"
         if fn == "Unsharp Mask":       params_usados["Unsharp k/σ/fuerza"] = f"{P['uk']}/{P['us']}/{P['uf']}"
         if fn in F_MORFO:
-            grupo = "A" if filt_activos.index(fn) < 3 else "B"
+            pos = next((i for i,x in enumerate(filt_activos) if x == fn), 0)
+            grupo = "A" if pos < 3 else "B"
             g = grupo.lower()
             params_usados[f"{fn} kernel/forma/iters ({grupo})"] = \
                 f"{P[f'mok_{g}']} / {P[f'mosh_{g}']} / {P[f'moit_{g}']}"
@@ -674,11 +803,11 @@ with tab1:
 {'═'*56}
 """.strip()
 
+    # Sin key= para que Streamlit use siempre value=texto_export actualizado
     st.text_area(
         label="📋 Configuración y métricas — listo para copiar",
         value=texto_export,
         height=370,
-        key="export_block",
         help="Selecciona todo (Ctrl+A dentro del cuadro) y copia (Ctrl+C)"
     )
 
