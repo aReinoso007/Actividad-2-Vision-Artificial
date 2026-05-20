@@ -156,6 +156,35 @@ def f_morfo(img, op="Erosión", ksize=3, forma="Rectángulo", iters=1):
     kern = cv2.getStructuringElement(FORMAS[forma], (k_odd(ksize),)*2)
     return cv2.morphologyEx(img, OPS_MORFO[op], kern, iterations=iters)
 
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# THRESHOLD (UMBRALIZACIÓN)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+TIPOS_THRESH = ["Binario fijo", "Otsu (automático)", "Adaptativo Gaussiano",
+                "Adaptativo Media", "Inverso fijo", "Inverso Otsu"]
+
+def f_threshold(img, tipo="Otsu (automático)", valor=127, block=11, C=2):
+    gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY) if img.ndim == 3 else img
+    bs   = block if block % 2 == 1 else block + 1
+    if tipo == "Binario fijo":
+        _, mask = cv2.threshold(gray, valor, 255, cv2.THRESH_BINARY)
+    elif tipo == "Otsu (automático)":
+        _, mask = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    elif tipo == "Adaptativo Gaussiano":
+        mask = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                                     cv2.THRESH_BINARY, bs, C)
+    elif tipo == "Adaptativo Media":
+        mask = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C,
+                                     cv2.THRESH_BINARY, bs, C)
+    elif tipo == "Inverso fijo":
+        _, mask = cv2.threshold(gray, valor, 255, cv2.THRESH_BINARY_INV)
+    elif tipo == "Inverso Otsu":
+        _, mask = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    else:
+        _, mask = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    return cv2.cvtColor(mask, cv2.COLOR_GRAY2RGB)
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # OPERACIONES ELEMENTALES
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -193,7 +222,7 @@ NINGUNO_FILT = "— ninguno —"
 OPS_PRE = [NINGUNA_PRE, "Suma", "Resta", "Corrección Gamma",
            "Linear Stretching", "Transformada Log", "Ecualización HE", "Negativa"]
 
-F_ESPACIALES = ["Gaussiano","CLAHE","Mediana","Bilateral","Sobel","Laplaciano","Canny","Unsharp Mask"]
+F_ESPACIALES = ["Gaussiano","CLAHE","Mediana","Bilateral","Sobel","Laplaciano","Canny","Unsharp Mask","Threshold"]
 F_MORFO      = list(OPS_MORFO.keys())
 FILTROS      = [NINGUNO_FILT] + F_ESPACIALES + F_MORFO
 
@@ -222,10 +251,85 @@ def aplicar_filtro(img, nombre, P, grupo="A"):
     if nombre=="Laplaciano":  return f_laplaciano(img, P["lk"])
     if nombre=="Canny":       return f_canny(img, P["ct1"], P["ct2"])
     if nombre=="Unsharp Mask":return f_unsharp(img, P["uk"], P["us"], P["uf"])
+    if nombre=="Threshold":    return f_threshold(img, P["th_tipo"], P["th_val"], P["th_block"], P["th_c"])
     if nombre in F_MORFO:
         g = grupo.lower()
         return f_morfo(img, nombre, P[f"mok_{g}"], P[f"mosh_{g}"], P[f"moit_{g}"])
     return img
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# MÉTRICAS DE DETECCIÓN DE BORDES
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def edge_density(img):
+    """% de píxeles clasificados como borde por Canny."""
+    gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY) if img.ndim == 3 else img
+    edges = cv2.Canny(gray, 50, 150)
+    return round(float(np.sum(edges > 0) / edges.size * 100), 4)
+
+def mean_edge_strength(img):
+    """Magnitud media y std del gradiente Sobel."""
+    gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY).astype(np.float32) if img.ndim == 3 else img.astype(np.float32)
+    sx = cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=3)
+    sy = cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=3)
+    mag = np.sqrt(sx**2 + sy**2)
+    return round(float(np.mean(mag)), 4), round(float(np.std(mag)), 4)
+
+def local_contrast(img):
+    """Contraste de alta frecuencia (img - blur gaussiano)."""
+    gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY).astype(np.float32) if img.ndim == 3 else img.astype(np.float32)
+    blur = cv2.GaussianBlur(gray, (5, 5), 1.0)
+    return round(float(np.std(gray - blur)), 4)
+
+def imagen_entropy(img):
+    """Entropía de Shannon sobre el histograma de luminancia."""
+    gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY) if img.ndim == 3 else img
+    hist = cv2.calcHist([gray], [0], None, [256], [0, 256]).flatten()
+    hist = hist / hist.sum()
+    hist = hist[hist > 0]
+    return round(float(-np.sum(hist * np.log2(hist))), 4)
+
+def mask_coverage(img):
+    """% de píxeles de borde en imagen binarizada."""
+    gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY) if img.ndim == 3 else img
+    return round(float(np.sum(gray > 127) / gray.size * 100), 4)
+
+def calcular_metricas_borde(orig, proc):
+    """Calcula todas las métricas de borde para original y procesada."""
+    dens_o,  dens_p  = edge_density(orig),      edge_density(proc)
+    mes_o,   mes_p   = mean_edge_strength(orig), mean_edge_strength(proc)
+    lc_o,    lc_p    = local_contrast(orig),     local_contrast(proc)
+    ent_o,   ent_p   = imagen_entropy(orig),     imagen_entropy(proc)
+    cov_o,   cov_p   = mask_coverage(orig),      mask_coverage(proc)
+    return {
+        "Edge Density (%)":          (dens_o, dens_p),
+        "Edge Strength — media":     (mes_o[0], mes_p[0]),
+        "Edge Strength — std":       (mes_o[1], mes_p[1]),
+        "Contraste local":           (lc_o,   lc_p),
+        "Entropía (bits)":           (ent_o,  ent_p),
+        "Mask Coverage (%)":         (cov_o,  cov_p),
+    }
+
+def plot_edge_comparison(orig, proc, label_proc):
+    """Figura: imagen de bordes Canny original vs procesada + gradiente."""
+    gray_o = cv2.cvtColor(orig, cv2.COLOR_RGB2GRAY)
+    gray_p = cv2.cvtColor(proc, cv2.COLOR_RGB2GRAY) if proc.ndim == 3 else proc
+    edges_o = cv2.Canny(gray_o, 50, 150)
+    edges_p = cv2.Canny(gray_p, 50, 150)
+    sx = cv2.Sobel(gray_p.astype(np.float32), cv2.CV_64F, 1, 0, ksize=3)
+    sy = cv2.Sobel(gray_p.astype(np.float32), cv2.CV_64F, 0, 1, ksize=3)
+    grad = cv2.normalize(np.sqrt(sx**2+sy**2), None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+
+    fig, axes = plt.subplots(1, 4, figsize=(16, 3.5))
+    fig.patch.set_facecolor(DARK_BG)
+    datos = [(orig, "Original"), (proc, label_proc),
+             (edges_o, "Bordes Canny — Original"), (edges_p, f"Bordes Canny — {label_proc}")]
+    for ax, (img, t) in zip(axes, datos):
+        ax.imshow(img, cmap="gray" if img.ndim == 2 else None)
+        ax.set_title(t, color="white", fontsize=8); ax.axis("off")
+    fig.tight_layout()
+    return fig
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # UTILIDADES Y GRÁFICAS
@@ -444,6 +548,15 @@ with st.sidebar:
         us  = st.slider("Unsharp — Sigma",       0.1,5.0,1.0,0.1, key="us")
         uf  = st.slider("Unsharp — Fuerza",      0.1,4.0,1.5,0.1, key="uf")
 
+    with st.expander("🎯 Threshold (Umbralización)", expanded=False):
+        th_tipo  = st.selectbox("Tipo de threshold", TIPOS_THRESH, key="th_tipo")
+        th_val   = st.slider("Umbral fijo",     0, 255, 127,    key="th_val",
+                             help="Solo para 'Binario fijo' e 'Inverso fijo'")
+        th_block = st.slider("Block size (adapt.)", 3, 51, 11, 2, key="th_block",
+                             help="Solo para métodos Adaptativos")
+        th_c     = st.slider("Constante C (adapt.)", -20, 20, 2, key="th_c",
+                             help="Solo para métodos Adaptativos")
+
     with st.expander("🔴 Morfológico A  (Pasos 1–3)", expanded=True):
         mok_a  = st.slider("Kernel A",   1,15,5,2,key="mok_a")
         mosh_a = st.selectbox("Forma A",["Rectángulo","Elipse","Cruz"],key="mosh_a")
@@ -461,6 +574,7 @@ P = dict(
     mok_b=mok_b, mosh_b=mosh_b, moit_b=moit_b,
     suma_v=suma_v, resta_v=resta_v, gamma=gamma,
     ls_min=ls_min, ls_max=ls_max, log_c=log_c,
+    th_tipo=th_tipo, th_val=th_val, th_block=th_block, th_c=th_c,
 )
 
 # ─── IMAGEN ──────────────────────────────────────────────────────────────────
@@ -522,12 +636,11 @@ with tab1:
     pre_ops  = []
     for i, col in enumerate(pre_cols):
         with col:
-            # Sincronizar key del widget con el valor guardado antes de renderizar
-            saved = st.session_state.get(f"saved_pre_{i}", NINGUNA_PRE)
-            if st.session_state.get(f"pre_{i}") != saved:
-                st.session_state[f"pre_{i}"] = saved
+            # Inicializar solo si no existe — no sobreescribir cambios del usuario
+            if f"pre_{i}" not in st.session_state:
+                st.session_state[f"pre_{i}"] = st.session_state.get(f"saved_pre_{i}", NINGUNA_PRE)
             sel = st.selectbox(f"Op. {i+1}", OPS_PRE, key=f"pre_{i}")
-            st.session_state[f"saved_pre_{i}"] = sel
+            st.session_state[f"saved_pre_{i}"] = sel  # mantener saved en sync
             pre_ops.append(sel)
 
     # Cómputo reactivo del pre-procesamiento
@@ -565,12 +678,11 @@ with tab1:
     for i, col in enumerate(filt_cols):
         with col:
             grupo_label = " 🔴" if i < 3 else " 🟠"
-            # Sincronizar key del widget con el valor guardado antes de renderizar
-            saved = st.session_state.get(f"saved_f{i}", NINGUNO_FILT)
-            if st.session_state.get(f"f{i}") != saved:
-                st.session_state[f"f{i}"] = saved
+            # Inicializar solo si no existe — no sobreescribir cambios del usuario
+            if f"f{i}" not in st.session_state:
+                st.session_state[f"f{i}"] = st.session_state.get(f"saved_f{i}", NINGUNO_FILT)
             sel = st.selectbox(f"Paso {i+1}{grupo_label}", FILTROS, key=f"f{i}")
-            st.session_state[f"saved_f{i}"] = sel
+            st.session_state[f"saved_f{i}"] = sel  # mantener saved en sync
             filt_names.append(sel)
 
     # Cómputo reactivo de filtros
@@ -620,11 +732,13 @@ with tab1:
     # ── Análisis opcional ─────────────────────────────────────────────────────
     st.markdown("<hr class='stage-sep'>", unsafe_allow_html=True)
 
-    col_tog1, col_tog2 = st.columns(2)
+    col_tog1, col_tog2, col_tog3 = st.columns(3)
     with col_tog1:
-        show_hist = st.toggle("📊 Histogramas", value=False, key="sh")
+        show_hist = st.toggle("📊 Histogramas",        value=False, key="sh")
     with col_tog2:
-        show_metr = st.toggle("📋 Métricas",    value=False, key="sm")
+        show_metr = st.toggle("📋 Métricas generales", value=False, key="sm")
+    with col_tog3:
+        show_edge = st.toggle("🔍 Métricas de bordes", value=False, key="se")
 
     if show_hist:
         st.markdown("#### Histogramas: Original → Pre-proc → Final")
@@ -719,6 +833,87 @@ with tab1:
 
         st.caption("**MSE** = Error cuadrático medio · **PSNR** = Relación señal/ruido · **SSIM** = Similitud estructural — todos calculados respecto a la imagen original")
 
+
+    if show_edge:
+        st.markdown("<hr class='stage-sep'>", unsafe_allow_html=True)
+        st.markdown("#### 🔍 Métricas de detección de bordes")
+        st.caption("Calculadas sobre la imagen original y el resultado final del pipeline.")
+
+        resultados_borde = calcular_metricas_borde(img_orig, img_final)
+
+        # Tabla comparativa
+        filas = []
+        for metrica, (val_orig, val_proc) in resultados_borde.items():
+            cambio = val_proc - val_orig
+            signo  = "▲" if cambio > 0 else "▼"
+            filas.append({
+                "Métrica":    metrica,
+                "Original":   val_orig,
+                "Final":      val_proc,
+                "Cambio":     f"{signo} {abs(round(cambio, 4))}",
+            })
+        df_edge = pd.DataFrame(filas).set_index("Métrica")
+        st.dataframe(df_edge, use_container_width=True)
+
+        # Tarjetas de las métricas clave
+        col_e1, col_e2, col_e3, col_e4 = st.columns(4)
+        dens_o, dens_p = resultados_borde["Edge Density (%)"]
+        mes_o,  mes_p  = resultados_borde["Edge Strength — media"]
+        ent_o,  ent_p  = resultados_borde["Entropía (bits)"]
+        cov_o,  cov_p  = resultados_borde["Mask Coverage (%)"]
+
+        st.markdown("""
+        <style>
+        .ecard { background:#0d1526; border:1px solid #1e2d4a; border-radius:8px;
+                 padding:10px; text-align:center; margin-bottom:6px; }
+        .ecard .elabel { color:#8899aa; font-size:0.68rem; font-family:"Space Mono",monospace;
+                         text-transform:uppercase; letter-spacing:1px; }
+        .ecard .eval   { font-size:1.1rem; font-weight:700; font-family:"Space Mono",monospace; color:#00d4ff; }
+        .ecard .ediff  { font-size:0.72rem; margin-top:2px; }
+        .ecard .up     { color:#51cf66; }
+        .ecard .down   { color:#ff6b6b; }
+        </style>""", unsafe_allow_html=True)
+
+        def delta_html(orig, proc, higher_better=True):
+            diff = proc - orig
+            cls  = "up" if (diff > 0) == higher_better else "down"
+            sign = "▲" if diff > 0 else "▼"
+            return f'<span class="{cls}">{sign} {abs(round(diff,4))}</span>'
+
+        with col_e1:
+            st.markdown(f"""<div class="ecard">
+                <div class="elabel">Edge Density</div>
+                <div class="eval">{dens_p}%</div>
+                <div class="ediff">orig: {dens_o}% &nbsp; {delta_html(dens_o, dens_p)}</div>
+            </div>""", unsafe_allow_html=True)
+        with col_e2:
+            st.markdown(f"""<div class="ecard">
+                <div class="elabel">Edge Strength</div>
+                <div class="eval">{mes_p}</div>
+                <div class="ediff">orig: {mes_o} &nbsp; {delta_html(mes_o, mes_p)}</div>
+            </div>""", unsafe_allow_html=True)
+        with col_e3:
+            st.markdown(f"""<div class="ecard">
+                <div class="elabel">Entropía (bits)</div>
+                <div class="eval">{ent_p}</div>
+                <div class="ediff">orig: {ent_o} &nbsp; {delta_html(ent_o, ent_p)}</div>
+            </div>""", unsafe_allow_html=True)
+        with col_e4:
+            st.markdown(f"""<div class="ecard">
+                <div class="elabel">Mask Coverage</div>
+                <div class="eval">{cov_p}%</div>
+                <div class="ediff">orig: {cov_o}% &nbsp; {delta_html(cov_o, cov_p)}</div>
+            </div>""", unsafe_allow_html=True)
+
+        # Comparación visual de bordes Canny
+        st.markdown("#### Comparación visual de bordes Canny")
+        fig_edge = plot_edge_comparison(img_orig, img_final, "Final")
+        st.pyplot(fig_edge, use_container_width=True); plt.close(fig_edge)
+
+        st.caption("**Edge Density** = % píxeles borde (Canny) · **Edge Strength** = magnitud gradiente Sobel · "
+                   "**Entropía** = información Shannon · **Mask Coverage** = % píxeles blancos en máscara binarizada")
+
+
     # ── Exportar configuración y métricas ─────────────────────────────────────
     st.markdown("<hr class='stage-sep'>", unsafe_allow_html=True)
     st.markdown('<span class="stage-header stage-res">📋 Exportar configuración y métricas</span>',
@@ -755,6 +950,11 @@ with tab1:
         if fn == "Laplaciano":         params_usados["Laplaciano k"]        = P["lk"]
         if fn == "Canny":              params_usados["Canny T1 / T2"]       = f"{P['ct1']} / {P['ct2']}"
         if fn == "Unsharp Mask":       params_usados["Unsharp k/σ/fuerza"] = f"{P['uk']}/{P['us']}/{P['uf']}"
+        if fn == "Threshold":          params_usados[f"Threshold tipo"]    = P["th_tipo"]
+        if fn == "Threshold" and P["th_tipo"] in ["Binario fijo","Inverso fijo"]:
+                                       params_usados["Threshold umbral"]   = P["th_val"]
+        if fn == "Threshold" and "Adaptativo" in P["th_tipo"]:
+                                       params_usados["Threshold block/C"]  = f"{P['th_block']} / {P['th_c']}"
         if fn in F_MORFO:
             pos = next((i for i,x in enumerate(filt_activos) if x == fn), 0)
             grupo = "A" if pos < 3 else "B"
@@ -768,9 +968,18 @@ with tab1:
     m_fin_exp     = metricas(img_orig, img_final)
     m_dif_exp     = metricas(img_orig, img_diff_exp)
 
+    # Métricas de bordes
+    rb = calcular_metricas_borde(img_orig, img_final)
+
     # Construir el texto exportable
     separador = "─" * 56
     params_lines = "\n".join(f"  {k:<32} {v}" for k, v in params_usados.items())
+
+    # Líneas de métricas de bordes
+    edge_lines = "\n".join(
+        f"  {metrica:<30} orig={vals[0]:>8}  final={vals[1]:>8}  Δ={round(vals[1]-vals[0],4):>+9}"
+        for metrica, vals in rb.items()
+    )
 
     texto_export = f"""
 {'═'*56}
@@ -791,7 +1000,7 @@ with tab1:
   Kernel: {P['mok_b']}  |  Forma: {P['mosh_b']}  |  Iters: {P['moit_b']}
 
 {separador}
-  MÉTRICAS  (referencia: imagen original)
+  MÉTRICAS DE CALIDAD  (referencia: imagen original)
 {separador}
   {'Etapa':<26} {'MSE':>10} {'PSNR (dB)':>10} {'SSIM':>8} {'Media':>8} {'Std':>8}
   {'─'*26} {'─'*10} {'─'*10} {'─'*8} {'─'*8} {'─'*8}
@@ -800,6 +1009,13 @@ with tab1:
   {'Diferencia orig→final':<26} {m_dif_exp['MSE']:>10} {m_dif_exp['PSNR']:>10} {m_dif_exp['SSIM']:>8} {m_dif_exp['Media']:>8} {m_dif_exp['Std']:>8}
 
   MSE ↓ mejor · PSNR ↑ mejor · SSIM ↑ mejor (máx 1.0)
+
+{separador}
+  MÉTRICAS DE DETECCIÓN DE BORDES  (original → final)
+{separador}
+{edge_lines}
+
+  Edge Density ▲ mejor · Edge Strength ▲ mejor · Entropía ▲ mejor
 {'═'*56}
 """.strip()
 
