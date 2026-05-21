@@ -1,0 +1,18 @@
+{
+  "nombre": "Pipeline_B_plus_TopHat",
+  "pre_ops": ["Corrección Gamma", "Linear Stretching", "Escala de Grises"],
+  "filt_names": ["Gaussiano", "CLAHE", "Unsharp Mask", "Gradiente Morfológico", "Cierre"],
+  "params": {
+    "gk": 3,  "gs": 0.8,
+    "cc": 4.0, "ct": 8,
+    "mk": 3, "bd": 7, "bsc": 50, "bss": 50,
+    "sk": 3, "sd": "XY", "lk": 3,
+    "ct1": 30, "ct2": 80,
+    "uk": 3,  "us": 1.0,  "uf": 2.0,
+    "mok_a": 3, "mosh_a": "Cruz", "moit_a": 1,
+    "mok_b": 3, "mosh_b": "Cruz", "moit_b": 1,
+    "suma_v": 50, "resta_v": 50, "gamma": 0.4,
+    "ls_min": 2, "ls_max": 98, "log_c": 40.0,
+    "th_tipo": "Otsu (automático)", "th_val": 127, "th_block": 11, "th_c": 2
+  }
+}
